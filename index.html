@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Random Wikipedia Explorer</title>
+    <style>
+        :root {
+            --bg-color: #ffffff;
+            --text-color: #333333;
+            --container-bg: #f8f9fa;
+            --button-bg: #4CAF50;
+            --button-hover: #45a049;
+            --shadow-color: rgba(0,0,0,0.1);
+        }
+
+        [data-theme="dark"] {
+            --bg-color: #1a1a1a;
+            --text-color: #ffffff;
+            --container-bg: #2d2d2d;
+            --button-bg: #2e7d32;
+            --button-hover: #1b5e20;
+            --shadow-color: rgba(255,255,255,0.1);
+        }
+
+        body {
+            font-family: 'Segoe UI', system-ui, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            transition: background-color 0.3s, color 0.3s;
+        }
+
+        .container {
+            background-color: var(--container-bg);
+            padding: 2rem;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px var(--shadow-color);
+            max-width: 800px;
+            margin: 0 auto;
+        }
+
+        button {
+            background-color: var(--button-bg);
+            color: white;
+            padding: 0.8rem 1.5rem;
+            border: none;
+            border-radius: 25px;
+            cursor: pointer;
+            font-size: 1rem;
+            transition: transform 0.2s, background-color 0.3s;
+        }
+
+        button:hover {
+            background-color: var(--button-hover);
+            transform: translateY(-1px);
+        }
+
+        .theme-switcher {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            padding: 0;
+        }
+
+        @media (max-width: 768px) {
+            .container {
+                padding: 1rem;
+                margin: 0 10px;
+            }
+            
+            button {
+                width: 100%;
+                padding: 1rem;
+            }
+            
+            h1 {
+                font-size: 1.5rem;
+            }
+        }
+
+        /* Loading spinner and content styles remain similar */
+        .loader {
+            border: 5px solid #f3f3f3;
+            border-top: 5px solid var(--button-bg);
+            border-radius: 50%;
+            width: 30px;
+            height: 30px;
+            animation: spin 1s linear infinite;
+            margin: 20px auto;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        img {
+            max-width: 100%;
+            height: auto;
+            border-radius: 8px;
+            margin: 1rem 0;
+        }
+
+        .error {
+            color: #ff4444;
+            font-weight: 600;
+        }
+
+        #content {
+            line-height: 1.6;
+        }
+
+        a {
+            color: var(--button-bg);
+            text-decoration: none;
+            font-weight: 600;
+        }
+
+        a:hover {
+            text-decoration: underline;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🌍 Random Wikipedia Explorer</h1>
+        <button onclick="fetchRandomPage()">🎲 Get Random Article</button>
+        <div class="loader" id="loader"></div>
+        <div class="content" id="content">
+            <h2 id="title"></h2>
+            <div id="image"></div>
+            <p id="summary"></p>
+            <a id="link" target="_blank">📖 Read Full Article</a>
+        </div>
+        <div id="error" class="error"></div>
+    </div>
+    <button class="theme-switcher" onclick="toggleTheme()">🌓</button>
+
+    <script>
+        // Theme management
+        function setTheme(theme) {
+            document.documentElement.setAttribute('data-theme', theme);
+            document.cookie = `theme=${theme}; path=/; max-age=${60*60*24*30}`;
+        }
+
+        function getTheme() {
+            return document.cookie.split('; ').find(row => row.startsWith('theme='))?.split('=')[1] || 'light';
+        }
+
+        function toggleTheme() {
+            const currentTheme = document.documentElement.getAttribute('data-theme');
+            const newTheme = currentTheme === 'light' ? 'dark' : 'light';
+            setTheme(newTheme);
+        }
+
+        // Initialize theme from cookie
+        window.onload = function() {
+            const savedTheme = getTheme();
+            setTheme(savedTheme);
+            fetchRandomPage();
+        }
+
+        // Enhanced fetch function with abort controller
+        let abortController = new AbortController();
+        
+        async function fetchRandomPage() {
+            abortController.abort();
+            abortController = new AbortController();
+            
+            const loader = document.getElementById('loader');
+            const content = document.getElementById('content');
+            const errorDiv = document.getElementById('error');
+            
+            try {
+                loader.style.display = 'block';
+                content.style.display = 'none';
+                errorDiv.textContent = '';
+
+                const randomResponse = await fetch(
+                    'https://en.wikipedia.org/w/api.php?action=query&list=random&rnnamespace=0&rnlimit=1&format=json&origin=*',
+                    { signal: abortController.signal }
+                );
+                
+                const randomData = await randomResponse.json();
+                const pageId = randomData.query.random[0].id;
+
+                const pageResponse = await fetch(
+                    `https://en.wikipedia.org/w/api.php?action=query&prop=extracts|pageimages&exintro&explaintext&piprop=original&pageids=${pageId}&format=json&origin=*`,
+                    { signal: abortController.signal }
+                );
+                
+                const pageData = await pageResponse.json();
+                const page = pageData.query.pages[pageId];
+
+                // Update DOM
+                document.getElementById('title').textContent = page.title;
+                document.getElementById('summary').textContent = page.extract || 'No summary available.';
+                document.getElementById('link').href = `https://en.wikipedia.org/?curid=${pageId}`;
+
+                const imageContainer = document.getElementById('image');
+                imageContainer.innerHTML = '';
+                if (page.original) {
+                    const img = new Image();
+                    img.src = page.original.source;
+                    img.alt = page.title;
+                    img.loading = 'lazy';
+                    imageContainer.appendChild(img);
+                }
+
+                loader.style.display = 'none';
+                content.style.display = 'block';
+            } catch (error) {
+                if (error.name !== 'AbortError') {
+                    loader.style.display = 'none';
+                    errorDiv.textContent = '🚨 Error loading content. Please try again.';
+                    console.error(error);
+                }
+            }
+        }
+
+        // Handle window resize
+        window.addEventListener('resize', () => {
+            document.documentElement.style.setProperty('--vh', `${window.innerHeight * 0.01}px`);
+        });
+    </script>
+</body>
+</html>
